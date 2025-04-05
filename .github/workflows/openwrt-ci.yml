@@ -28,6 +28,21 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
+      - name: Check Server Performance
+        run: |
+          echo "警告⚠"
+          echo "分配的服务器性能有限，若选择的插件过多，务必注意CPU性能！"
+          echo -e "已知CPU型号(降序): 7763，8370C，8272CL，8171M，E5-2673\n"
+          echo "--------------------------CPU信息--------------------------"
+          echo "CPU物理数量: $(cat /proc/cpuinfo | grep "physical id" | sort | uniq | wc -l)"
+          echo "CPU核心数量: $(nproc)"
+          echo -e "CPU型号信息:$(cat /proc/cpuinfo | grep -m1 name | awk -F: '{print $2}')\n"
+          echo "--------------------------内存信息--------------------------"
+          echo "已安装内存详细信息:"
+          echo -e "$(sudo lshw -short -C memory | grep GiB)\n"
+          echo "--------------------------硬盘信息--------------------------"
+          echo "硬盘数量: $(ls /dev/sd* | grep -v [1-9] | wc -l)" && df -hT
+
       - name: Space cleanup and Initialization environment
         env:
           DEBIAN_FRONTEND: noninteractive
@@ -46,6 +61,15 @@ jobs:
 
       - name: Checkout OpenWrt
         uses: actions/checkout@v4
+
+      - name: Cache Toolchain
+        if: env.CACHE_TOOLCHAIN == 'true'
+        uses: HiGarfield/cachewrtbuild@main
+        with:
+          ccache: false
+          mixkey: ${{ env.SOURCE_REPO }}-${{ env.REPO_BRANCH }}-${{ env.DEVICE_TARGET }}-${{ env.DEVICE_SUBTARGET }}
+          prefix: ${{ env.OPENWRT_PATH }}
+
 
       - name: Update feeds
         run: |
@@ -71,6 +95,8 @@ jobs:
           CONFIG_TARGET_PROFILE="DEVICE_sinovoip_bananapi-m2-ultra"
           CONFIG_TARGET_ARCH_PACKAGES="arm_cortex-a7_neon-vfpv4"
           CONFIG_CPU_TYPE="cortex-a7+neon-vfpv4"
+          CONFIG_PACKAGE_luci-app-alist=n
+          CONFIG_PACKAGE_luci-app-unblockmusic=n
           EOF
 
           #
@@ -83,6 +109,21 @@ jobs:
       - name: Download packages
         run: make download -j16
 
+      - name: Initialization environment
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          docker rmi `docker images -q`
+          sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc /etc/mysql /etc/php
+          sudo -E apt-get -y purge azure-cli* docker* ghc* zulu* hhvm* llvm* firefox* google* dotnet* aspnetcore* powershell* openjdk* adoptopenjdk* mysql* php* mongodb* moby* snap* || true
+          sudo -E apt-get -qq update
+          sudo -E apt-get -qq install libfuse-dev $(curl -fsSL git.io/depends-ubuntu-2204)
+          sudo -E apt-get -qq autoremove --purge
+          sudo -E apt-get -qq clean
+          sudo timedatectl set-timezone "$TZ"
+          sudo mkdir -p /workdir
+          sudo chown $USER:$GROUPS /workdir
+    
       - name: Compile firmware
         run: |
           make -j$(nproc) || make -j4 V=s
