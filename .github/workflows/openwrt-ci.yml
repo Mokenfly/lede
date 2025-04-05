@@ -158,6 +158,9 @@ jobs:
           sed -i 's/^[ \t]*//g' ./.config
           export TERM=xterm
 
+      - name: Complete configuration
+        run: make oldconfig
+
       - name: Download packages
         run: make download -j16
 
