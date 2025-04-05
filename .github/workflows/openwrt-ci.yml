@@ -155,7 +155,6 @@ jobs:
           # 
 
           sed -i 's/^[ \t]*//g' ./.config
-          make defconfig
 
       - name: Download packages
         run: make download -j16
